@@ -1,5 +1,7 @@
 # A Kubernetes Controller for the Pimoroni Blinkt on a Raspberry Pi #
 
+<img src="https://github.com/apprenda/blinkt-k8s-controller/raw/master/images/rpi-minicluster.jpg" width="600" />
+
 A simple way to physically/visually display the number of Pods running on Raspberry Pi-based Kubernetes worker nodes by using a [Pimoroni Blinkt](https://shop.pimoroni.com/products/blinkt).
 
 The Blinkt is a low-profile strip of eight super-bright, color LED indicators that plugs directly onto the Raspberry Pi's GPIO header. Several available software libraries make it easy to control the color and brightness of each LED independently.
