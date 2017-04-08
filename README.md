@@ -1,6 +1,6 @@
 # A Kubernetes Controller for the Pimoroni Blinkt on a Raspberry Pi #
 
-<img src="https://github.com/apprenda/blinkt-k8s-controller/raw/master/images/rpi-minicluster.jpg" width="600" />
+<img src="https://github.com/apprenda/blinkt-k8s-controller/raw/master/images/rpi-minicluster.jpg" width="300" />
 
 A simple way to physically/visually display the number of Pods running on Raspberry Pi-based Kubernetes worker nodes by using a [Pimoroni Blinkt](https://shop.pimoroni.com/products/blinkt).
 
