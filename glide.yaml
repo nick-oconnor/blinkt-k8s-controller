@@ -1,4 +1,4 @@
-package: github.com/ikester/blinkt-k8s-controller
+package: github.com/apprenda/blinkt-k8s-controller
 import:
 - package: k8s.io/client-go
   version: ^v1.5.0
