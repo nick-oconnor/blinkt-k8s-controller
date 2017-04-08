@@ -1,0 +1,32 @@
+kind: DaemonSet
+apiVersion: extensions/v1beta1
+metadata:
+  name: rpi-k8s-lights
+spec:
+  template:
+    metadata:
+      labels:
+        name: rpi-k8s-lights
+    spec:
+      nodeSelector:
+        deviceType: blinkt
+      containers:
+      - name: rpi-k8s-lights
+        image: ikester/rpi-k8s-lights:v1
+#        imagePullPolicy: Always
+        env:
+        - name: COLOR
+          value: "#000B87"
+        - name: NAMESPACE
+          value: default
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - mountPath: /sys
+          name: sys-tree
+      volumes:
+      - name: sys-tree
+        hostPath:
+          path: /sys
