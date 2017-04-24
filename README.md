@@ -30,7 +30,14 @@ kubectl label node <nodename> deviceType=blinkt
 
 ## Usage ##
 
-Create a DaemonSet using the included Resource Descriptor:
+If you're running on a Kubernetes v1.6 cluster or above and have RBAC enabled, you can use the sample RBAC Descriptor to run the DaemonSet with the proper permissions:
+
+```sh
+kubectl create -f kubernetes/blinkt-k8s-controller-rbac.yaml
+```
+
+Create the DaemonSet using the included Resource Descriptor:
+
 ```sh
 kubectl create -f kubernetes/blinkt-k8s-controller-ds.yaml
 ```
