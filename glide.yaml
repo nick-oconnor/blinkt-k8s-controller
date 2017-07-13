@@ -1,6 +1,4 @@
 package: github.com/apprenda/blinkt-k8s-controller
 import:
 - package: k8s.io/client-go
-  version: ^v1.5.0
-- package: github.com/emicklei/go-restful
-  version: v1.2
+  version: HEAD
