@@ -23,15 +23,16 @@ import (
 
 	"github.com/ikester/blinkt"
 
-	"k8s.io/client-go/1.5/kubernetes"
-	"k8s.io/client-go/1.5/pkg/api"
-	"k8s.io/client-go/1.5/pkg/api/v1"
-	"k8s.io/client-go/1.5/pkg/fields"
-	"k8s.io/client-go/1.5/pkg/labels"
-	"k8s.io/client-go/1.5/pkg/runtime"
-	"k8s.io/client-go/1.5/pkg/watch"
-	"k8s.io/client-go/1.5/rest"
-	"k8s.io/client-go/1.5/tools/cache"
+	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/runtime"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // BlinktK8sController is the main interface for a Blinkt Controller
@@ -52,9 +53,9 @@ type blinktPodImpl struct {
 	resyncPeriod time.Duration
 
 	clientset     *kubernetes.Clientset
-	podController *cache.Controller
+	podController cache.Controller
 	podStore      cache.Store
-	listOptions   api.ListOptions
+	listOptions   metav1.ListOptions
 	stopCh        <-chan struct{}
 }
 
@@ -79,9 +80,9 @@ func (b *blinktPodImpl) Init(color, nodename, namespace string, stopCh <-chan st
 	b.resyncPeriod = time.Minute * 30
 	b.nodename = nodename
 	b.namespace = namespace
-	b.listOptions = api.ListOptions{
-		LabelSelector: labels.Set{"blinkt": "show"}.AsSelector(),
-		FieldSelector: fields.Set{"spec.nodeName": nodename}.AsSelector(),
+	b.listOptions = metav1.ListOptions{
+		LabelSelector: labels.Set{"blinkt": "show"}.String(),
+		FieldSelector: fields.Set{"spec.nodeName": nodename}.String(),
 	}
 	b.stopCh = stopCh
 
@@ -153,25 +154,11 @@ func (b *blinktPodImpl) StartWatchingPods() {
 
 	b.podStore, b.podController = cache.NewInformer(
 		&cache.ListWatch{
-			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
-				return b.clientset.CoreClient.Get().
-					Namespace(b.namespace).
-					Resource("pods").
-					VersionedParams(&options, api.ParameterCodec).
-					FieldsSelectorParam(b.listOptions.FieldSelector).
-					LabelsSelectorParam(b.listOptions.LabelSelector).
-					Do().
-					Get()
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				return b.clientset.CoreV1().Pods(b.namespace).List(b.listOptions)
 			},
-			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
-				return b.clientset.CoreClient.Get().
-					Prefix("watch").
-					Namespace(b.namespace).
-					Resource("pods").
-					VersionedParams(&options, api.ParameterCodec).
-					FieldsSelectorParam(b.listOptions.FieldSelector).
-					LabelsSelectorParam(b.listOptions.LabelSelector).
-					Watch()
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				return b.clientset.CoreV1().Pods(b.namespace).Watch(b.listOptions)
 			},
 		},
 		&v1.Pod{},
