@@ -14,7 +14,7 @@ spec:
         deviceType: blinkt
       containers:
       - name: blinkt-k8s-controller
-        image: apprenda/blinkt-k8s-controller:v1
+        image: apprenda/blinkt-k8s-controller:v2
         env:
         - name: COLOR
           value: "#000B87"
