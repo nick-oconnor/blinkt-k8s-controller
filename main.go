@@ -23,16 +23,23 @@ import (
 
 	"github.com/ikester/blinkt"
 
-	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/runtime"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
+)
+
+const (
+	defaultPodColor        = "000B87"
+	defaultStartColor      = "66FF00"
+	defaultStopColor       = "FF0000"
+	defaultPixelBrightness = 0.3
 )
 
 // BlinktK8sController is the main interface for a Blinkt Controller
@@ -43,12 +50,10 @@ type BlinktK8sController interface {
 
 type blinktPodImpl struct {
 	bl        blinkt.Blinkt
-	color     string
 	nodename  string
 	namespace string
-	r, g, b   int
 
-	numPods int
+	podList []*v1.Pod
 
 	resyncPeriod time.Duration
 
@@ -66,16 +71,12 @@ func NewBlinktK8sController(color, nodename, namespace string, stopCh <-chan str
 	if err != nil {
 		return nil, err
 	}
+	b.podList = make([]*v1.Pod, 0, 30)
 	return &b, nil
 }
 
 func (b *blinktPodImpl) Init(color, nodename, namespace string, stopCh <-chan struct{}) error {
 	log.Println("Starting BlinktK8sController")
-	b.color = color
-	if color == "" {
-		color = "#FF00FF"
-	}
-	b.r, b.g, b.b = blinkt.Hex2RGB(color)
 
 	b.resyncPeriod = time.Minute * 30
 	b.nodename = nodename
@@ -117,34 +118,73 @@ func (b *blinktPodImpl) initBlinkt() {
 	b.bl.Setup()
 }
 
-func (b *blinktPodImpl) updateDisplay(up bool) {
-	log.Printf("There are now %d blinkt labeled pods on this node\n", b.numPods)
-	if up && b.numPods < 9 {
-		newPixel := b.numPods - 1
-		b.bl.FlashPixel(newPixel, 2, "#66FF00")
-		b.bl.SetPixel(newPixel, b.r, b.g, b.b)
-		b.bl.SetPixelBrightness(newPixel, 0.5)
-	} else if !up && b.numPods < 8 {
-		oldPixel := b.numPods
-		b.bl.FlashPixel(oldPixel, 2, "#FF0000")
-		b.bl.SetPixel(oldPixel, 0, 0, 0)
-		b.bl.SetPixelBrightness(oldPixel, 0.5)
+func (b *blinktPodImpl) addPod(pod *v1.Pod) {
+	b.podList = append(b.podList, pod)
+	numPods := len(b.podList)
+	log.Println("Pod added: ", pod.Name, " Total Pods: ", numPods)
+	if numPods < 9 {
+		color := pod.Labels["blinktColor"]
+		if color == "" {
+			color = defaultPodColor
+		}
+		newPixel := numPods - 1
+		b.bl.FlashPixel(newPixel, 2, defaultStartColor)
+		b.bl.SetPixelHex(newPixel, color)
+		b.bl.SetPixelBrightness(newPixel, defaultPixelBrightness)
+		b.bl.Show()
 	}
-	b.bl.Show()
+}
+
+func (b *blinktPodImpl) removePod(pod *v1.Pod) {
+	ok, podIdx := false, 0
+	for i, p := range b.podList {
+		if p.Name == pod.Name {
+			ok = true
+			podIdx = i
+			break
+		}
+	}
+	if !ok {
+		log.Println("Error: pod not found in list")
+		return
+	}
+	if podIdx == len(b.podList)-1 {
+		b.podList = b.podList[:podIdx]
+	} else {
+		b.podList = append(b.podList[:podIdx], b.podList[podIdx+1:]...)
+	}
+	endIdx := len(b.podList)
+	log.Println("Pod removed: ", pod.Name, " Total Pods: ", endIdx)
+	if podIdx < 8 {
+		b.bl.FlashPixel(podIdx, 2, defaultStopColor)
+		if endIdx > 8 {
+			endIdx = 8
+		}
+		if endIdx < 8 {
+			for pixel := endIdx; pixel < 8; pixel++ {
+				b.bl.SetPixel(pixel, 0, 0, 0)
+			}
+		}
+		for pixel, pod := range b.podList[:endIdx] {
+			color := pod.Labels["blinktColor"]
+			if color == "" {
+				color = defaultPodColor
+			}
+			b.bl.SetPixelHex(pixel, color)
+			b.bl.SetPixelBrightness(pixel, defaultPixelBrightness)
+		}
+		b.bl.Show()
+	}
 }
 
 func (b *blinktPodImpl) newResourceEventHandlerFuncs() cache.ResourceEventHandlerFuncs {
 	return cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			log.Println("Pod added: ", obj.(*v1.Pod).Name)
-			b.numPods++
-			b.updateDisplay(true)
+			b.addPod(obj.(*v1.Pod))
 		},
 		UpdateFunc: func(old, new interface{}) {},
 		DeleteFunc: func(obj interface{}) {
-			log.Println("Pod deleted: ", obj.(*v1.Pod).Name)
-			b.numPods--
-			b.updateDisplay(false)
+			b.removePod(obj.(*v1.Pod))
 		},
 	}
 }

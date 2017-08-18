@@ -1,5 +1,5 @@
-hash: 97ab69cb73c28dc058707d7e0c6f65c7d0cb5848e13a1c868ae7b1c16bbb8a1c
-updated: 2017-07-13T16:06:37.357243968-04:00
+hash: 73c0e578c63beb2f0bfba57de3aec0a203131c5463dfcd9cf0150f236eacfc65
+updated: 2017-08-18T10:09:40.783120166-04:00
 imports:
 - name: github.com/davecgh/go-spew
   version: 5215b55f46b2b919f50a1df0eaa5886afe4e3b3d
@@ -35,7 +35,7 @@ imports:
 - name: github.com/google/gofuzz
   version: 44d81051d367757e1c7c6a5a86423ece9afcf63c
 - name: github.com/ikester/blinkt
-  version: 493b100eedb12ad84691ee26e68f2a5673696eb6
+  version: 609ac315477ef388e4ad009714dce52da92ded71
 - name: github.com/ikester/gpio
   version: fe62e588056804fac390215c8a5542d25e2ad9de
 - name: github.com/juju/ratelimit
