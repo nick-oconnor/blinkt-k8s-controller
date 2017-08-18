@@ -8,7 +8,7 @@ The Blinkt is a low-profile strip of eight super-bright, color LED indicators th
 
 ## How It Works ##
 
-This controller is designed to be deployed as a [DaemonSet](https://kubernetes.io/docs/admin/daemons/) to control Blinkt devices connected to Raspberry Pi Kubernetes worker nodes. Once deployed, every Pod with a label of `blinkt: show` that lands on a node will cause an LED indicator on that node's Blinkt to turn on (only the first 8 Pods can be displayed). As new Pods get created or deleted the light display will adjust accordingly. The color of the indicator can be customized by editing the `COLOR` environment variable in the included sample deployment file. Optionally, each Pod can define it's own color by having the label `blinktColor` with an Hex (CSS-like) color value (without the hash `#` sign).
+This controller is designed to be deployed as a [DaemonSet](https://kubernetes.io/docs/admin/daemons/) to control Blinkt devices connected to Raspberry Pi Kubernetes worker nodes. Once deployed, every Pod with a label of `blinkt: show` that lands on a node will cause an LED indicator on that node's Blinkt to turn on (only the first 8 Pods can be displayed). As new Pods get created or deleted the light display will adjust accordingly. The color of the indicator can be customized by editing the `COLOR` environment variable in the included sample deployment file. Optionally, each Pod can define it's own color by having the label `blinktColor: "FF0000"` (an Hex, CSS-like color value without the hash `#` sign).
 
 ## Acknowledgements ##
 
