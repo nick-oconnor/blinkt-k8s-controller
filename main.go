@@ -214,11 +214,13 @@ func (d *blinktDaemon) updatePixels() {
 }
 
 func (d *blinktDaemon) addPod(pod *v1.Pod) {
+	log.Println("Pod ", pod.Name, " added (", len(d.resourceList)+1, " known pods)")
 	d.resourceList = append(d.resourceList, &resource{pod.Name, getPodColor(pod), added})
 	d.updatePixels()
 }
 
 func (d *blinktDaemon) addNode(node *v1.Node) {
+	log.Println("Node ", node.Name, " added (", len(d.resourceList)+1, " known nodes)")
 	d.resourceList = append(d.resourceList, &resource{node.Name, getNodeColor(node), added})
 	d.updatePixels()
 }
@@ -228,6 +230,7 @@ func (d *blinktDaemon) updatePod(pod *v1.Pod) {
 	if resource == nil {
 		log.Println("Pod ", pod.Name, " not found in list")
 	}
+	log.Println("Pod ", pod.Name, " updated (", len(d.resourceList), " known pods)")
 	color := getPodColor(pod)
 	if color != resource.color {
 		resource.color = color
@@ -242,6 +245,7 @@ func (d *blinktDaemon) updateNode(node *v1.Node) {
 		log.Println("Node ", node.Name, " not found in list")
 		return
 	}
+	log.Println("Node ", node.Name, " updated (", len(d.resourceList), " known nodes)")
 	color := getNodeColor(node)
 	if color != resource.color {
 		resource.color = color
@@ -256,6 +260,7 @@ func (d *blinktDaemon) removePod(pod *v1.Pod) {
 		log.Println("Pod ", pod.Name, " not found in list")
 		return
 	}
+	log.Println("Pod ", pod.Name, " removed (", len(d.resourceList)-1, " known pods)")
 	resource.state = removed
 	d.updatePixels()
 }
@@ -266,6 +271,7 @@ func (d *blinktDaemon) removeNode(node *v1.Node) {
 		log.Println("Node ", node.Name, " not found in list")
 		return
 	}
+	log.Println("Node ", node.Name, " removed (", len(d.resourceList)-1, " known nodes)")
 	resource.state = removed
 	d.updatePixels()
 }
