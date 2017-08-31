@@ -18,6 +18,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -36,74 +37,100 @@ import (
 )
 
 const (
-	defaultPodColor        = "000B87"
-	defaultStartColor      = "66FF00"
-	defaultStopColor       = "FF0000"
-	defaultPixelBrightness = 0.3
+	addedColor               = "00FF00"
+	updatedColor             = "000B87"
+	removedColor             = "FF0000"
+	defaultPodColor          = "000B87"
+	defaultNodeReadyColor    = "000B87"
+	defaultNodeNotReadyColor = "FF0000"
 )
 
-// BlinktK8sController is the main interface for a Blinkt Controller
-type BlinktK8sController interface {
-	Init(color, nodename, namespace string, stopCh <-chan struct{}) error
-	StartWatchingPods()
+const (
+	monitorPods  = "pods"
+	monitorNodes = "nodes"
+)
+
+const (
+	added     = iota
+	updated   = iota
+	removed   = iota
+	unchanged = iota
+)
+
+type blinktInterface interface {
+	Init(monitor, nodeName, namespace string, brightness float64, stopCh <-chan struct{}) error
+	Watch()
 }
 
-type blinktPodImpl struct {
-	bl        blinkt.Blinkt
-	nodename  string
-	namespace string
+type blinktDaemon struct {
+	monitor    string
+	nodeName   string
+	namespace  string
+	brightness float64
 
-	podList []*v1.Pod
+	resourceList []*resource
 
+	blinkt       blinkt.Blinkt
+	listOptions  metav1.ListOptions
 	resyncPeriod time.Duration
-
-	clientset     *kubernetes.Clientset
-	podController cache.Controller
-	podStore      cache.Store
-	listOptions   metav1.ListOptions
-	stopCh        <-chan struct{}
+	clientset    *kubernetes.Clientset
+	controller   cache.Controller
+	store        cache.Store
+	stopCh       <-chan struct{}
 }
 
-// NewBlinktK8sController creates a new Blinkt Controller
-func NewBlinktK8sController(color, nodename, namespace string, stopCh <-chan struct{}) (BlinktK8sController, error) {
-	b := blinktPodImpl{}
-	err := b.Init(color, nodename, namespace, stopCh)
+type resource struct {
+	name  string
+	color string
+	state int
+}
+
+func NewBlinktDaemon(monitor, nodeName, namespace string, brightness float64, stopCh <-chan struct{}) (blinktInterface, error) {
+	d := blinktDaemon{}
+
+	err := d.Init(monitor, nodeName, namespace, brightness, stopCh)
 	if err != nil {
 		return nil, err
 	}
-	b.podList = make([]*v1.Pod, 0, 30)
-	return &b, nil
+
+	return &d, nil
 }
 
-func (b *blinktPodImpl) Init(color, nodename, namespace string, stopCh <-chan struct{}) error {
-	log.Println("Starting BlinktK8sController")
+func (d *blinktDaemon) Init(monitor, nodeName, namespace string, brightness float64, stopCh <-chan struct{}) error {
+	log.Println("Starting the Blinkt daemon")
 
-	b.resyncPeriod = time.Minute * 30
-	b.nodename = nodename
-	b.namespace = namespace
-	b.listOptions = metav1.ListOptions{
-		LabelSelector: labels.Set{"blinkt": "show"}.String(),
-		FieldSelector: fields.Set{"spec.nodeName": nodename}.String(),
+	d.monitor = monitor
+	d.nodeName = nodeName
+	d.namespace = namespace
+	d.brightness = brightness
+	d.resourceList = make([]*resource, 0)
+
+	d.blinkt = blinkt.NewBlinkt()
+	d.blinkt.ShowAnimOnStart = true
+	d.blinkt.ShowAnimOnExit = true
+	d.blinkt.Setup()
+
+	switch monitor {
+	case monitorPods:
+		d.listOptions = metav1.ListOptions{
+			LabelSelector: labels.Set{"blinkt": "show"}.String(),
+			FieldSelector: fields.Set{"spec.nodeName": nodeName}.String(),
+		}
+	case monitorNodes:
+		d.listOptions = metav1.ListOptions{
+			LabelSelector: labels.Set{"blinkt": "show"}.String(),
+		}
 	}
-	b.stopCh = stopCh
 
-	b.initBlinkt()
+	d.resyncPeriod = time.Minute * 5
+	d.stopCh = stopCh
 
-	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		return err
 	}
 
-	// external cluster config
-	// var err error
-	// config := &rest.Config{
-	// 	Host: "http://127.0.0.1:8001",
-	// 	//BearerToken: token,
-	// }
-
-	// creates the clientset
-	b.clientset, err = kubernetes.NewForConfig(config)
+	d.clientset, err = kubernetes.NewForConfig(config)
 	if err != nil {
 		return err
 	}
@@ -111,107 +138,204 @@ func (b *blinktPodImpl) Init(color, nodename, namespace string, stopCh <-chan st
 	return nil
 }
 
-func (b *blinktPodImpl) initBlinkt() {
-	b.bl = blinkt.NewBlinkt()
-	b.bl.ShowAnimOnStart = true
-	b.bl.ShowAnimOnExit = true
-	b.bl.Setup()
+func getPodColor(pod *v1.Pod) string {
+	color := pod.Labels["blinktColor"]
+	if color == "" {
+		color = defaultPodColor
+	}
+	return color
 }
 
-func (b *blinktPodImpl) addPod(pod *v1.Pod) {
-	b.podList = append(b.podList, pod)
-	numPods := len(b.podList)
-	log.Println("Pod added: ", pod.Name, " Total Pods: ", numPods)
-	if numPods < 9 {
-		color := pod.Labels["blinktColor"]
-		if color == "" {
-			color = defaultPodColor
+func getNodeColor(node *v1.Node) string {
+	for _, c := range node.Status.Conditions {
+		if c.Type == v1.NodeReady {
+			switch c.Status {
+			case v1.ConditionTrue:
+				color := node.Labels["blinktReadyColor"]
+				if color == "" {
+					color = defaultNodeReadyColor
+				}
+				return color
+			case v1.ConditionFalse:
+				color := node.Labels["blinktNotReadyColor"]
+				if color == "" {
+					color = defaultNodeNotReadyColor
+				}
+				return color
+			}
 		}
-		newPixel := numPods - 1
-		b.bl.FlashPixel(newPixel, 2, defaultStartColor)
-		b.bl.SetPixelHex(newPixel, color)
-		b.bl.SetPixelBrightness(newPixel, defaultPixelBrightness)
-		b.bl.Show()
+	}
+	return defaultNodeNotReadyColor
+}
+
+func (d *blinktDaemon) getResource(name string) *resource {
+	for _, resource := range d.resourceList {
+		if resource.name == name {
+			return resource
+		}
+	}
+	return nil
+}
+
+func (d *blinktDaemon) updatePixels() {
+	i := 0
+	for ; i < len(d.resourceList); i++ {
+		r := d.resourceList[i]
+		switch r.state {
+		case added:
+			if i < 8 {
+				d.blinkt.FlashPixel(i, 2, addedColor)
+				d.blinkt.SetPixelHex(i, r.color)
+				d.blinkt.SetPixelBrightness(i, d.brightness)
+			}
+			r.state = unchanged
+		case updated:
+			if i < 8 {
+				d.blinkt.FlashPixel(i, 2, updatedColor)
+				d.blinkt.SetPixelHex(i, r.color)
+				d.blinkt.SetPixelBrightness(i, d.brightness)
+			}
+			r.state = unchanged
+		case removed:
+			if i < 8 {
+				d.blinkt.FlashPixel(i, 2, removedColor)
+			}
+			d.resourceList = append(d.resourceList[:i], d.resourceList[i+1:]...)
+			i--
+		case unchanged:
+			d.blinkt.SetPixelHex(i, r.color)
+			d.blinkt.SetPixelBrightness(i, d.brightness)
+		}
+	}
+	for ; i < 8; i++ {
+		d.blinkt.SetPixel(i, 0, 0, 0)
+	}
+	d.blinkt.Show()
+}
+
+func (d *blinktDaemon) addPod(pod *v1.Pod) {
+	d.resourceList = append(d.resourceList, &resource{pod.Name, getPodColor(pod), added})
+	d.updatePixels()
+}
+
+func (d *blinktDaemon) addNode(node *v1.Node) {
+	d.resourceList = append(d.resourceList, &resource{node.Name, getNodeColor(node), added})
+	d.updatePixels()
+}
+
+func (d *blinktDaemon) updatePod(pod *v1.Pod) {
+	resource := d.getResource(pod.Name)
+	if resource == nil {
+		log.Println("Pod ", pod.Name, " not found in list")
+	}
+	color := getPodColor(pod)
+	if color != resource.color {
+		resource.color = color
+		resource.state = updated
+		d.updatePixels()
 	}
 }
 
-func (b *blinktPodImpl) removePod(pod *v1.Pod) {
-	ok, podIdx := false, 0
-	for i, p := range b.podList {
-		if p.Name == pod.Name {
-			ok = true
-			podIdx = i
-			break
-		}
-	}
-	if !ok {
-		log.Println("Error: pod not found in list")
+func (d *blinktDaemon) updateNode(node *v1.Node) {
+	resource := d.getResource(node.Name)
+	if resource == nil {
+		log.Println("Node ", node.Name, " not found in list")
 		return
 	}
-	if podIdx == len(b.podList)-1 {
-		b.podList = b.podList[:podIdx]
-	} else {
-		b.podList = append(b.podList[:podIdx], b.podList[podIdx+1:]...)
-	}
-	endIdx := len(b.podList)
-	log.Println("Pod removed: ", pod.Name, " Total Pods: ", endIdx)
-	if podIdx < 8 {
-		b.bl.FlashPixel(podIdx, 2, defaultStopColor)
-		if endIdx > 8 {
-			endIdx = 8
-		}
-		if endIdx < 8 {
-			for pixel := endIdx; pixel < 8; pixel++ {
-				b.bl.SetPixel(pixel, 0, 0, 0)
-			}
-		}
-		for pixel, pod := range b.podList[:endIdx] {
-			color := pod.Labels["blinktColor"]
-			if color == "" {
-				color = defaultPodColor
-			}
-			b.bl.SetPixelHex(pixel, color)
-			b.bl.SetPixelBrightness(pixel, defaultPixelBrightness)
-		}
-		b.bl.Show()
+	color := getNodeColor(node)
+	if color != resource.color {
+		resource.color = color
+		resource.state = updated
+		d.updatePixels()
 	}
 }
 
-func (b *blinktPodImpl) newResourceEventHandlerFuncs() cache.ResourceEventHandlerFuncs {
+func (d *blinktDaemon) removePod(pod *v1.Pod) {
+	resource := d.getResource(pod.Name)
+	if resource == nil {
+		log.Println("Pod ", pod.Name, " not found in list")
+		return
+	}
+	resource.state = removed
+	d.updatePixels()
+}
+
+func (d *blinktDaemon) removeNode(node *v1.Node) {
+	resource := d.getResource(node.Name)
+	if resource == nil {
+		log.Println("Node ", node.Name, " not found in list")
+		return
+	}
+	resource.state = removed
+	d.updatePixels()
+}
+
+func (d *blinktDaemon) newPodEventHandlerFuncs() cache.ResourceEventHandlerFuncs {
 	return cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			b.addPod(obj.(*v1.Pod))
+			d.addPod(obj.(*v1.Pod))
 		},
-		UpdateFunc: func(old, new interface{}) {},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			d.updatePod(newObj.(*v1.Pod))
+		},
 		DeleteFunc: func(obj interface{}) {
-			b.removePod(obj.(*v1.Pod))
+			d.removePod(obj.(*v1.Pod))
 		},
 	}
 }
 
-// watchPods starts the watch of Kubernetes Pods resources and updates the corresponding store
-func (b *blinktPodImpl) StartWatchingPods() {
-
-	b.podStore, b.podController = cache.NewInformer(
-		&cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				return b.clientset.CoreV1().Pods(b.namespace).List(b.listOptions)
-			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return b.clientset.CoreV1().Pods(b.namespace).Watch(b.listOptions)
-			},
+func (d *blinktDaemon) newNodeEventHandlerFuncs() cache.ResourceEventHandlerFuncs {
+	return cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			d.addNode(obj.(*v1.Node))
 		},
-		&v1.Pod{},
-		b.resyncPeriod,
-		b.newResourceEventHandlerFuncs(),
-	)
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			d.updateNode(newObj.(*v1.Node))
+		},
+		DeleteFunc: func(obj interface{}) {
+			d.removeNode(obj.(*v1.Node))
+		},
+	}
+}
 
-	go b.podController.Run(b.stopCh)
+func (d *blinktDaemon) Watch() {
+	switch d.monitor {
+	case monitorPods:
+		d.store, d.controller = cache.NewInformer(
+			&cache.ListWatch{
+				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+					return d.clientset.CoreV1().Pods(d.namespace).List(d.listOptions)
+				},
+				WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+					return d.clientset.CoreV1().Pods(d.namespace).Watch(d.listOptions)
+				},
+			},
+			&v1.Pod{},
+			d.resyncPeriod,
+			d.newPodEventHandlerFuncs(),
+		)
+	case monitorNodes:
+		d.store, d.controller = cache.NewInformer(
+			&cache.ListWatch{
+				ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+					return d.clientset.CoreV1().Nodes().List(d.listOptions)
+				},
+				WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+					return d.clientset.CoreV1().Nodes().Watch(d.listOptions)
+				},
+			},
+			&v1.Node{},
+			d.resyncPeriod,
+			d.newNodeEventHandlerFuncs(),
+		)
+	}
 
-	<-b.stopCh
+	go d.controller.Run(d.stopCh)
 
-	log.Println("Shutting down BlinktK8sController")
-	b.bl.Cleanup()
+	<-d.stopCh
+
+	log.Println("Stopping the Blinkt daemon")
+	d.blinkt.Cleanup()
 }
 
 func main() {
@@ -223,13 +347,16 @@ func main() {
 		<-signalChan
 		stopCh <- struct{}{}
 	}()
-
-	color := os.Getenv("COLOR")
-	nodename := os.Getenv("NODE_NAME")
-	namespace := os.Getenv("NAMESPACE")
-	b, err := NewBlinktK8sController(color, nodename, namespace, stopCh)
+	monitor := os.Getenv("MONITOR")
+	brightness, err := strconv.ParseFloat(os.Getenv("BRIGHTNESS"), 64)
 	if err != nil {
 		panic(err.Error())
 	}
-	b.StartWatchingPods()
+	nodeName := os.Getenv("NODE_NAME")
+	namespace := os.Getenv("NAMESPACE")
+	d, err := NewBlinktDaemon(monitor, nodeName, namespace, brightness, stopCh)
+	if err != nil {
+		panic(err.Error())
+	}
+	d.Watch()
 }
