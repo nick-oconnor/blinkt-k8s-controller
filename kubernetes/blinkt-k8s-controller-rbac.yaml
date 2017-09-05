@@ -2,21 +2,21 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   labels:
-    app: blinkt-sa
-  name: blinkt-sa
+    app: blinkt-k8s-controller-sa
+  name: blinkt-k8s-controller-sa
   namespace: kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
 metadata:
-  name: blinkt
+  name: blinkt-k8s-controller-sa
   labels:
-    app: blinkt
+    app: blinkt-k8s-controller-sa
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: cluster-admin
 subjects:
 - kind: ServiceAccount
-  name: blinkt-sa
+  name: blinkt-k8s-controller-sa
   namespace: kube-system
