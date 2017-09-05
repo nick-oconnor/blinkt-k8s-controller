@@ -122,20 +122,16 @@ func (o *ControllerObj) updateBlinkt() {
 		r := o.resourceList[i]
 		switch r.state {
 		case added:
-			if i < 8 {
-				o.blinkt.Flash(i, blinkt.Green, o.brightness, 2, 50*time.Millisecond)
-				o.blinkt.Set(i, r.color, o.brightness)
-			}
-			r.state = unchanged
+			fallthrough
 		case updated:
 			if i < 8 {
-				o.blinkt.Flash(i, blinkt.Blue, o.brightness, 2, 50*time.Millisecond)
+				o.blinkt.Flash(i, r.color, o.brightness, 2, 50*time.Millisecond)
 				o.blinkt.Set(i, r.color, o.brightness)
 			}
 			r.state = unchanged
 		case deleted:
 			if i < 8 {
-				o.blinkt.Flash(i, blinkt.Red, o.brightness, 2, time.Millisecond*50)
+				o.blinkt.Flash(i, r.color, o.brightness, 2, 50*time.Millisecond)
 			}
 			o.resourceList = append(o.resourceList[:i], o.resourceList[i+1:]...)
 			i--
