@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package nodes
 
 import (
 	"log"
@@ -29,63 +29,80 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 )
 
-func getPodColor(pod *v1.Pod) string {
-	color := pod.Labels["blinktColor"]
-	if color == "" {
-		color = blinkt.Blue
+func getNodeColor(node *v1.Node) string {
+	for _, c := range node.Status.Conditions {
+		if c.Type == v1.NodeReady {
+			switch c.Status {
+			case v1.ConditionTrue:
+				color := node.Labels["blinktReadyColor"]
+				if color == "" {
+					color = blinkt.Green
+				}
+				return color
+			case v1.ConditionFalse:
+				color := node.Labels["blinktNotReadyColor"]
+				if color == "" {
+					color = blinkt.Red
+				}
+				return color
+			}
+		}
 	}
-	return color
+	return blinkt.Red
 }
 
 func main() {
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		panic(err.Error())
+		log.Panicln(err.Error())
 	}
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		panic(err.Error())
+		log.Panicln(err.Error())
 	}
-	brightness, _ := strconv.ParseFloat(os.Getenv("BRIGHTNESS"), 64)
-	nodeName := os.Getenv("NODE_NAME")
-	namespace := os.Getenv("NAMESPACE")
+	brightness, err := strconv.ParseFloat(os.Getenv("BRIGHTNESS"), 64)
+	if err != nil {
+		log.Panicln(err.Error())
+	}
 	c := lib.NewController(brightness)
+	defer c.Close()
 	listOptions := metav1.ListOptions{
 		LabelSelector: labels.Set{"blinkt": "show"}.String(),
-		FieldSelector: fields.Set{"spec.nodeName": nodeName}.String(),
 	}
 	_, controller := cache.NewInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				return clientset.CoreV1().Pods(namespace).List(listOptions)
+				return clientset.CoreV1().Nodes().List(listOptions)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return clientset.CoreV1().Pods(namespace).Watch(listOptions)
+				return clientset.CoreV1().Nodes().Watch(listOptions)
 			},
 		},
-		&v1.Pod{},
-		time.Minute,
+		&v1.Node{},
+		time.Minute*5,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
-				pod := obj.(*v1.Pod)
-				log.Println("Pod ", pod.Name, " added")
-				c.Add(pod.Name, getPodColor(pod))
+				node := obj.(*v1.Node)
+				if c.Add(node.Name, getNodeColor(node)) {
+					log.Println("Node ", node.Name, " added")
+				}
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
-				pod := newObj.(*v1.Pod)
-				log.Println("Pod ", pod.Name, " updated")
-				c.Update(pod.Name, getPodColor(pod))
+				node := newObj.(*v1.Node)
+				if c.Update(node.Name, getNodeColor(node)) {
+					log.Println("Node ", node.Name, " updated")
+				}
 			},
 			DeleteFunc: func(obj interface{}) {
-				pod := obj.(*v1.Pod)
-				log.Println("Pod ", pod.Name, " deleted")
-				c.Delete(pod.Name)
+				node := obj.(*v1.Node)
+				if c.Delete(node.Name) {
+					log.Println("Node ", node.Name, " deleted")
+				}
 			},
 		},
 	)

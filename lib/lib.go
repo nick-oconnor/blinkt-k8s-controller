@@ -34,99 +34,58 @@ const (
 )
 
 type Controller interface {
-	Add(name, color string)
-	Update(name, color string)
-	Delete(name string)
+	Add(name, color string) bool
+	Update(name, color string) bool
+	Delete(name string) bool
 	Watch(controller cache.Controller)
 	Close()
 }
 
 type ControllerObj struct {
 	brightness   float64
-	resourceList []*Resource
+	resourceList []*resource
 	blinkt       blinkt.Blinkt
 }
 
-type Resource struct {
-	Name  string
-	Color string
-	State int
+type resource struct {
+	name  string
+	color string
+	state int
 }
 
 func NewController(brightness float64) Controller {
 	return &ControllerObj{
 		brightness,
-		make([]*Resource, 0),
+		make([]*resource, 0),
 		blinkt.NewBlinkt(blinkt.Blue, brightness),
 	}
 }
 
-func (o *ControllerObj) getResource(name string) *Resource {
-	for _, r := range o.resourceList {
-		if r.Name == name {
-			return r
-		}
-	}
-	return nil
-}
-
-func (o *ControllerObj) Add(name, color string) {
-	o.resourceList = append(o.resourceList, &Resource{name, color, added})
+func (o *ControllerObj) Add(name, color string) bool {
+	o.resourceList = append(o.resourceList, &resource{name, color, added})
 	o.updateBlinkt()
+	return true
 }
 
-func (o *ControllerObj) Update(name, color string) {
+func (o *ControllerObj) Update(name, color string) bool {
 	r := o.getResource(name)
-	if r == nil || color == r.Color {
-		return
+	if r == nil || color == r.color {
+		return false
 	}
-	r.Color = color
-	r.State = updated
+	r.color = color
+	r.state = updated
 	o.updateBlinkt()
+	return true
 }
 
-func (o *ControllerObj) Delete(name string) {
+func (o *ControllerObj) Delete(name string) bool {
 	r := o.getResource(name)
 	if r == nil {
-		return
+		return false
 	}
-	r.State = deleted
+	r.state = deleted
 	o.updateBlinkt()
-}
-
-func (o *ControllerObj) updateBlinkt() {
-	i := 0
-	for ; i < len(o.resourceList); i++ {
-		r := o.resourceList[i]
-		switch r.State {
-		case added:
-			if i < 8 {
-				o.blinkt.Flash(i, blinkt.Green, o.brightness, 2, 50*time.Millisecond)
-				o.blinkt.Set(i, r.Color, o.brightness)
-			}
-			r.State = unchanged
-		case updated:
-			if i < 8 {
-				o.blinkt.Flash(i, blinkt.Blue, o.brightness, 2, 50*time.Millisecond)
-				o.blinkt.Set(i, r.Color, o.brightness)
-			}
-			r.State = unchanged
-		case deleted:
-			if i < 8 {
-				o.blinkt.Flash(i, blinkt.Red, o.brightness, 2, time.Millisecond*50)
-			}
-			o.resourceList = append(o.resourceList[:i], o.resourceList[i+1:]...)
-			i--
-		case unchanged:
-			if i < 8 {
-				o.blinkt.Set(i, r.Color, o.brightness)
-			}
-		}
-	}
-	for ; i < 8; i++ {
-		o.blinkt.Set(i, blinkt.Off, 0)
-	}
-	o.blinkt.Show()
+	return true
 }
 
 func (o *ControllerObj) Watch(controller cache.Controller) {
@@ -146,4 +105,48 @@ func (o *ControllerObj) Watch(controller cache.Controller) {
 func (o *ControllerObj) Close() {
 	log.Println("Stopping the Blinkt controller")
 	o.blinkt.Close(blinkt.Red, o.brightness)
+}
+
+func (o *ControllerObj) getResource(name string) *resource {
+	for _, r := range o.resourceList {
+		if r.name == name {
+			return r
+		}
+	}
+	return nil
+}
+
+func (o *ControllerObj) updateBlinkt() {
+	i := 0
+	for ; i < len(o.resourceList); i++ {
+		r := o.resourceList[i]
+		switch r.state {
+		case added:
+			if i < 8 {
+				o.blinkt.Flash(i, blinkt.Green, o.brightness, 2, 50*time.Millisecond)
+				o.blinkt.Set(i, r.color, o.brightness)
+			}
+			r.state = unchanged
+		case updated:
+			if i < 8 {
+				o.blinkt.Flash(i, blinkt.Blue, o.brightness, 2, 50*time.Millisecond)
+				o.blinkt.Set(i, r.color, o.brightness)
+			}
+			r.state = unchanged
+		case deleted:
+			if i < 8 {
+				o.blinkt.Flash(i, blinkt.Red, o.brightness, 2, time.Millisecond*50)
+			}
+			o.resourceList = append(o.resourceList[:i], o.resourceList[i+1:]...)
+			i--
+		case unchanged:
+			if i < 8 {
+				o.blinkt.Set(i, r.color, o.brightness)
+			}
+		}
+	}
+	for ; i < 8; i++ {
+		o.blinkt.Set(i, blinkt.Off, 0)
+	}
+	o.blinkt.Show()
 }
