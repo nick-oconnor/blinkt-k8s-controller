@@ -5,5 +5,5 @@
 
 set -xe
 
-docker build -t ngpitt/blinkt-k8s-controller-nodes .
+docker build -t ngpitt/blinkt-k8s-controller-nodes:v1 .
 docker push ngpitt/blinkt-k8s-controller-nodes

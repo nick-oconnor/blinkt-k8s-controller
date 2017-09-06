@@ -18,7 +18,7 @@ spec:
         blinktImage: nodes
       containers:
       - name: blinkt-k8s-controller-nodes
-        image: ngpitt/blinkt-k8s-controller-nodes:latest
+        image: ngpitt/blinkt-k8s-controller-nodes:v1
         env:
         - name: BRIGHTNESS
           value: "0.1"

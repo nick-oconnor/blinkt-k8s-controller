@@ -18,7 +18,7 @@ spec:
         blinktImage: pods
       containers:
       - name: blinkt-k8s-controller-pods
-        image: ngpitt/blinkt-k8s-controller-pods:latest
+        image: ngpitt/blinkt-k8s-controller-pods:v1
         env:
         - name: BRIGHTNESS
           value: "0.1"
