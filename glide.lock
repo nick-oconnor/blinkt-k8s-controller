@@ -1,5 +1,5 @@
 hash: 97ab69cb73c28dc058707d7e0c6f65c7d0cb5848e13a1c868ae7b1c16bbb8a1c
-updated: 2017-09-06T23:01:44.303437621-04:00
+updated: 2017-09-07T09:09:40.992272618-04:00
 imports:
 - name: github.com/davecgh/go-spew
   version: 5215b55f46b2b919f50a1df0eaa5886afe4e3b3d
@@ -43,7 +43,7 @@ imports:
   - jlexer
   - jwriter
 - name: github.com/ngpitt/blinkt
-  version: 86dbbd2d0098d7cbd6a60b6914de39045f92ad75
+  version: 7cc639321bf3e67bc301c3e1ff9792fb5ff95a05
 - name: github.com/ngpitt/gpio
   version: 1eff78a58b0e3c4f3377fd5539f9b21a9e8697ff
 - name: github.com/PuerkitoBio/purell
