@@ -1,5 +1,5 @@
 hash: 97ab69cb73c28dc058707d7e0c6f65c7d0cb5848e13a1c868ae7b1c16bbb8a1c
-updated: 2017-09-01T15:47:18.34571951-04:00
+updated: 2017-09-06T23:01:44.303437621-04:00
 imports:
 - name: github.com/davecgh/go-spew
   version: 5215b55f46b2b919f50a1df0eaa5886afe4e3b3d
@@ -34,10 +34,6 @@ imports:
   version: 44145f04b68cf362d9c4df2182967c2275eaefed
 - name: github.com/google/gofuzz
   version: 44d81051d367757e1c7c6a5a86423ece9afcf63c
-- name: github.com/ikester/blinkt
-  version: 609ac315477ef388e4ad009714dce52da92ded71
-- name: github.com/ikester/gpio
-  version: fe62e588056804fac390215c8a5542d25e2ad9de
 - name: github.com/juju/ratelimit
   version: 77ed1c8a01217656d2080ad51981f6e99adaa177
 - name: github.com/mailru/easyjson
@@ -46,6 +42,10 @@ imports:
   - buffer
   - jlexer
   - jwriter
+- name: github.com/ngpitt/blinkt
+  version: 86dbbd2d0098d7cbd6a60b6914de39045f92ad75
+- name: github.com/ngpitt/gpio
+  version: 1eff78a58b0e3c4f3377fd5539f9b21a9e8697ff
 - name: github.com/PuerkitoBio/purell
   version: 8a290539e2e8629dbc4e6bad948158f790ec31f4
 - name: github.com/PuerkitoBio/urlesc
@@ -59,6 +59,8 @@ imports:
 - name: golang.org/x/net
   version: e90d6d0afc4c315a0d87a568ae68577cc15149a0
   subpackages:
+  - context
+  - context/ctxhttp
   - http2
   - http2/hpack
   - idna
@@ -83,6 +85,7 @@ imports:
 - name: k8s.io/apimachinery
   version: 75b8dd260ef0469d96d578705a87cffd0e09dab8
   subpackages:
+  - pkg/api/equality
   - pkg/api/errors
   - pkg/api/meta
   - pkg/api/resource
@@ -109,18 +112,22 @@ imports:
   - pkg/util/diff
   - pkg/util/errors
   - pkg/util/framer
+  - pkg/util/httpstream
   - pkg/util/intstr
   - pkg/util/json
+  - pkg/util/mergepatch
   - pkg/util/net
   - pkg/util/rand
   - pkg/util/runtime
   - pkg/util/sets
+  - pkg/util/strategicpatch
   - pkg/util/validation
   - pkg/util/validation/field
   - pkg/util/wait
   - pkg/util/yaml
   - pkg/version
   - pkg/watch
+  - third_party/forked/golang/json
   - third_party/forked/golang/reflect
 - name: k8s.io/client-go
   version: 3627aeb7d4f6ade38f995d2c923e459146493c7e
@@ -201,4 +208,8 @@ imports:
   - util/clock
   - util/flowcontrol
   - util/integer
+- name: k8s.io/heapster
+  version: d2a1cf189921a68edd025d034ebdb348d7587509
+  subpackages:
+  - metrics/apis/metrics/v1alpha1
 testImports: []

@@ -15,7 +15,10 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"time"
@@ -33,12 +36,38 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
+	metrics "k8s.io/heapster/metrics/apis/metrics/v1alpha1"
 )
 
-func getPodColor(pod *v1.Pod) string {
+func getPodColor(pod *v1.Pod, clientset *kubernetes.Clientset) string {
 	color := pod.Labels["blinktColor"]
-	if color == "" {
-		color = blinkt.Blue
+	switch color {
+	case "":
+		return blinkt.Blue
+	case "cpu":
+		url := fmt.Sprintf("apis/metrics/v1alpha1/namespaces/%s/pods/%s", pod.Namespace, pod.Name)
+		response, err := clientset.Core().RESTClient().Get().
+			Namespace("kube-system").
+			Prefix("proxy").
+			Resource("services").
+			Name("heapster").
+			Suffix(url).
+			Do().Raw()
+		if err != nil {
+			log.Panicln(err.Error())
+		}
+		var podMetrics metrics.PodMetrics
+		err = json.Unmarshal(response, &podMetrics)
+		if err != nil {
+			log.Panicln(err.Error())
+		}
+		cpuRequested := pod.Spec.Containers[0].Resources.Requests.Cpu().Value()
+		cpuUsed := podMetrics.Containers[0].Usage.Cpu().Value()
+		ratio := math.Min(2, 2*float64(cpuRequested)/float64(cpuUsed))
+		b := int(math.Max(0, 255*(1-ratio)))
+		r := int(math.Max(0, 255*(ratio-1)))
+		g := 255 - b - r
+		return fmt.Sprintf("%02X%02X%02X", r, g, b)
 	}
 	return color
 }
@@ -78,13 +107,13 @@ func main() {
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				pod := obj.(*v1.Pod)
-				if c.Add(pod.Name, getPodColor(pod)) {
+				if c.Add(pod.Name, getPodColor(pod, clientset)) {
 					log.Println("Pod ", pod.Name, " added")
 				}
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
 				pod := newObj.(*v1.Pod)
-				if c.Update(pod.Name, getPodColor(pod)) {
+				if c.Update(pod.Name, getPodColor(pod, clientset)) {
 					log.Println("Pod ", pod.Name, " updated")
 				}
 			},
