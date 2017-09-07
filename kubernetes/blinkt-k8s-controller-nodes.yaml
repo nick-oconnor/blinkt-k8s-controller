@@ -22,6 +22,8 @@ spec:
         env:
         - name: BRIGHTNESS
           value: "0.1"
+        - name: RESYNC_PERIOD
+          value: "4s"
         volumeMounts:
         - mountPath: /sys
           name: sys-tree

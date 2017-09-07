@@ -69,6 +69,10 @@ func main() {
 	if err != nil {
 		log.Panicln(err.Error())
 	}
+	resyncPeriod, err := time.ParseDuration(os.Getenv("RESYNC_PERIOD"))
+	if err != nil {
+		log.Panicln(err.Error())
+	}
 	c := lib.NewController(brightness)
 	defer c.Close()
 	listOptions := metav1.ListOptions{
@@ -84,7 +88,7 @@ func main() {
 			},
 		},
 		&v1.Node{},
-		time.Minute*5,
+		resyncPeriod,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				node := obj.(*v1.Node)

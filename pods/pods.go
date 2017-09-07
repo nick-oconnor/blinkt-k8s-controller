@@ -85,6 +85,10 @@ func main() {
 	if err != nil {
 		log.Panicln(err.Error())
 	}
+	resyncPeriod, err := time.ParseDuration(os.Getenv("RESYNC_PERIOD"))
+	if err != nil {
+		log.Panicln(err.Error())
+	}
 	nodeName := os.Getenv("NODE_NAME")
 	namespace := os.Getenv("NAMESPACE")
 	c := lib.NewController(brightness)
@@ -103,7 +107,7 @@ func main() {
 			},
 		},
 		&v1.Pod{},
-		time.Minute,
+		resyncPeriod,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				pod := obj.(*v1.Pod)
