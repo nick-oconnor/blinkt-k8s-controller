@@ -43,7 +43,7 @@ type Controller interface {
 
 type ControllerObj struct {
 	brightness   float64
-	resourceList []*resource
+	resourceList []resource
 	blinkt       blinkt.Blinkt
 }
 
@@ -56,13 +56,13 @@ type resource struct {
 func NewController(brightness float64) Controller {
 	return &ControllerObj{
 		brightness,
-		[]*resource{},
+		[]resource{},
 		blinkt.NewBlinkt(blinkt.Blue, brightness),
 	}
 }
 
 func (o *ControllerObj) Add(name, color string) bool {
-	o.resourceList = append(o.resourceList, &resource{name, color, added})
+	o.resourceList = append(o.resourceList, resource{name, color, added})
 	o.updateBlinkt()
 	return true
 }
@@ -108,9 +108,9 @@ func (o *ControllerObj) Close() {
 }
 
 func (o *ControllerObj) getResource(name string) *resource {
-	for _, r := range o.resourceList {
+	for i, r := range o.resourceList {
 		if r.name == name {
-			return r
+			return &o.resourceList[i]
 		}
 	}
 	return nil
@@ -119,7 +119,7 @@ func (o *ControllerObj) getResource(name string) *resource {
 func (o *ControllerObj) updateBlinkt() {
 	i := 0
 	for ; i < len(o.resourceList); i++ {
-		r := o.resourceList[i]
+		r := &o.resourceList[i]
 		switch r.state {
 		case added:
 			fallthrough
