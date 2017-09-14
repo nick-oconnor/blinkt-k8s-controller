@@ -93,7 +93,7 @@ func (o *ControllerObj) Watch(controller cache.Controller) {
 	stopCh := make(chan struct{}, 1)
 	defer close(stopCh)
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigs
 		stopCh <- struct{}{}
