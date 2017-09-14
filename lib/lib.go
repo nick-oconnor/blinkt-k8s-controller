@@ -56,7 +56,7 @@ type resource struct {
 func NewController(brightness float64) Controller {
 	return &ControllerObj{
 		brightness,
-		make([]*resource, 0),
+		[]*resource{},
 		blinkt.NewBlinkt(blinkt.Blue, brightness),
 	}
 }
