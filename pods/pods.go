@@ -40,7 +40,7 @@ import (
 	"k8s.io/metrics/pkg/apis/metrics/v1alpha1"
 )
 
-func getPodColor(pod *v1.Pod, clientset *kubernetes.Clientset) string {
+func getPodColor(pod *v1.Pod) string {
 	color := pod.Labels["blinktColor"]
 	switch color {
 	case "":
@@ -113,13 +113,13 @@ func main() {
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				pod := obj.(*v1.Pod)
-				if c.Add(pod.Name, getPodColor(pod, clientset)) {
+				if c.Add(pod.Name, getPodColor(pod)) {
 					log.Println("Pod ", pod.Name, " added")
 				}
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
 				pod := newObj.(*v1.Pod)
-				if c.Update(pod.Name, getPodColor(pod, clientset)) {
+				if c.Update(pod.Name, getPodColor(pod)) {
 					log.Println("Pod ", pod.Name, " updated")
 				}
 			},

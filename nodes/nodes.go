@@ -39,7 +39,7 @@ import (
 	"k8s.io/metrics/pkg/apis/metrics/v1alpha1"
 )
 
-func getNodeColor(node *v1.Node, clientset *kubernetes.Clientset) string {
+func getNodeColor(node *v1.Node) string {
 	for _, c := range node.Status.Conditions {
 		if c.Type == v1.NodeReady {
 			switch c.Status {
@@ -123,13 +123,13 @@ func main() {
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				node := obj.(*v1.Node)
-				if c.Add(node.Name, getNodeColor(node, clientset)) {
+				if c.Add(node.Name, getNodeColor(node)) {
 					log.Println("Node ", node.Name, " added")
 				}
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
 				node := newObj.(*v1.Node)
-				if c.Update(node.Name, getNodeColor(node, clientset)) {
+				if c.Update(node.Name, getNodeColor(node)) {
 					log.Println("Node ", node.Name, " updated")
 				}
 			},
