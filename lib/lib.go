@@ -92,10 +92,10 @@ func (o *ControllerObj) Watch(controller cache.Controller) {
 	log.Println("Starting the Blinkt controller")
 	stopCh := make(chan struct{}, 1)
 	defer close(stopCh)
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		<-signalChan
+		<-sigs
 		stopCh <- struct{}{}
 	}()
 	go controller.Run(stopCh)

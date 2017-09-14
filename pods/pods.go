@@ -17,8 +17,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -26,48 +28,48 @@ import (
 	"github.com/ngpitt/blinkt"
 	"github.com/ngpitt/blinkt-k8s-controller/lib"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/api/v1"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
-
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
-	metrics "k8s.io/heapster/metrics/apis/metrics/v1alpha1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/metrics/pkg/apis/metrics/v1alpha1"
 )
 
 func getPodColor(pod *v1.Pod, clientset *kubernetes.Clientset) string {
 	color := pod.Labels["blinktColor"]
 	switch color {
 	case "":
-		return blinkt.Blue
+		color = blinkt.Blue
 	case "cpu":
-		url := fmt.Sprintf("apis/metrics/v1alpha1/namespaces/%s/pods/%s", pod.Namespace, pod.Name)
-		response, err := clientset.Core().RESTClient().Get().
-			Namespace("kube-system").
-			Prefix("proxy").
-			Resource("services").
-			Name("heapster").
-			Suffix(url).
-			Do().Raw()
+		url := fmt.Sprintf("http://heapster.kube-system/apis/metrics/v1alpha1/namespaces/%s/pods/%s", pod.Namespace, pod.Name)
+		response, err := http.Get(url)
 		if err != nil {
 			log.Panicln(err.Error())
 		}
-		var podMetrics metrics.PodMetrics
-		err = json.Unmarshal(response, &podMetrics)
-		if err != nil {
-			log.Panicln(err.Error())
+		cpuUsed := int64(0)
+		if response.StatusCode == http.StatusOK {
+			bytes, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				log.Panicln(err.Error())
+			}
+			var metrics v1alpha1.PodMetrics
+			err = json.Unmarshal(bytes, &metrics)
+			if err != nil {
+				log.Panicln(err.Error())
+			}
+			cpuUsed = metrics.Containers[0].Usage.Cpu().MilliValue()
 		}
-		cpuRequested := pod.Spec.Containers[0].Resources.Requests.Cpu().Value()
-		cpuUsed := podMetrics.Containers[0].Usage.Cpu().Value()
-		ratio := math.Min(2, 2*float64(cpuRequested)/float64(cpuUsed))
+		cpuRequested := pod.Spec.Containers[0].Resources.Requests.Cpu().MilliValue()
+		ratio := math.Min(2, 2*float64(cpuUsed)/float64(cpuRequested))
 		b := int(math.Max(0, 255*(1-ratio)))
 		r := int(math.Max(0, 255*(ratio-1)))
 		g := 255 - b - r
-		return fmt.Sprintf("%02X%02X%02X", r, g, b)
+		color = fmt.Sprintf("%02X%02X%02X", r, g, b)
 	}
 	return color
 }

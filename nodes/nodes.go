@@ -15,7 +15,12 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"log"
+	"math"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -23,31 +28,57 @@ import (
 	"github.com/ngpitt/blinkt"
 	"github.com/ngpitt/blinkt-k8s-controller/lib"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/api/v1"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
-
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/metrics/pkg/apis/metrics/v1alpha1"
 )
 
-func getNodeColor(node *v1.Node) string {
+func getNodeColor(node *v1.Node, clientset *kubernetes.Clientset) string {
 	for _, c := range node.Status.Conditions {
 		if c.Type == v1.NodeReady {
 			switch c.Status {
 			case v1.ConditionTrue:
 				color := node.Labels["blinktReadyColor"]
-				if color == "" {
-					color = blinkt.Green
+				switch color {
+				case "":
+					color = blinkt.Blue
+				case "cpu":
+					url := fmt.Sprintf("http://heapster.kube-system/apis/metrics/v1alpha1/nodes/%s", node.Name)
+					response, err := http.Get(url)
+					if err != nil {
+						log.Panicln(err.Error())
+					}
+					cpuUsed := int64(0)
+					if response.StatusCode == http.StatusOK {
+						bytes, err := ioutil.ReadAll(response.Body)
+						if err != nil {
+							log.Panicln(err.Error())
+						}
+						var metrics v1alpha1.NodeMetrics
+						err = json.Unmarshal(bytes, &metrics)
+						if err != nil {
+							log.Panicln(err.Error())
+						}
+						cpuUsed = metrics.Usage.Cpu().MilliValue()
+					}
+					cpuCapacity := node.Status.Capacity.Cpu().MilliValue()
+					ratio := math.Min(2, 2*float64(cpuUsed)/float64(cpuCapacity))
+					b := int(math.Max(0, 255*(1-ratio)))
+					r := int(math.Max(0, 255*(ratio-1)))
+					g := 255 - b - r
+					color = fmt.Sprintf("%02X%02X%02X", r, g, b)
 				}
 				return color
 			case v1.ConditionFalse:
 				color := node.Labels["blinktNotReadyColor"]
 				if color == "" {
-					color = blinkt.Red
+					color = blinkt.Off
 				}
 				return color
 			}
@@ -92,13 +123,13 @@ func main() {
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				node := obj.(*v1.Node)
-				if c.Add(node.Name, getNodeColor(node)) {
+				if c.Add(node.Name, getNodeColor(node, clientset)) {
 					log.Println("Node ", node.Name, " added")
 				}
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
 				node := newObj.(*v1.Node)
-				if c.Update(node.Name, getNodeColor(node)) {
+				if c.Update(node.Name, getNodeColor(node, clientset)) {
 					log.Println("Node ", node.Name, " updated")
 				}
 			},

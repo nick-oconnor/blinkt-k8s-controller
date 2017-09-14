@@ -1,4 +1,1 @@
-package: github.com/apprenda/blinkt-k8s-controller
-import:
-- package: k8s.io/client-go
-  version: HEAD
+package: github.com/ngpitt/blinkt-k8s-controller
