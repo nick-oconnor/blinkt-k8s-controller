@@ -57,7 +57,7 @@ func getPodColor(pod *v1.Pod, clientset *kubernetes.Clientset) string {
 			if err != nil {
 				log.Panicln(err.Error())
 			}
-			var metrics v1alpha1.PodMetrics
+			metrics := v1alpha1.PodMetrics{}
 			err = json.Unmarshal(bytes, &metrics)
 			if err != nil {
 				log.Panicln(err.Error())

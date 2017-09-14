@@ -60,7 +60,7 @@ func getNodeColor(node *v1.Node, clientset *kubernetes.Clientset) string {
 						if err != nil {
 							log.Panicln(err.Error())
 						}
-						var metrics v1alpha1.NodeMetrics
+						metrics := v1alpha1.NodeMetrics{}
 						err = json.Unmarshal(bytes, &metrics)
 						if err != nil {
 							log.Panicln(err.Error())
