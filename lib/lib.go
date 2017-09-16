@@ -15,14 +15,20 @@
 package lib
 
 import (
+	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/ngpitt/blinkt"
 
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -37,8 +43,13 @@ type Controller interface {
 	Add(name, color string) bool
 	Update(name, color string) bool
 	Delete(name string) bool
-	Watch(controller cache.Controller)
-	Close()
+	Watch(objType runtime.Object,
+		listFunc cache.ListFunc,
+		watchFunc cache.WatchFunc,
+		addFunc func(obj interface{}),
+		updateFunc func(oldObj, newObj interface{}),
+		deleteFunc func(obj interface{}))
+	Cleanup()
 }
 
 type ControllerObj struct {
@@ -53,12 +64,36 @@ type resource struct {
 	state int
 }
 
-func NewController(brightness float64) Controller {
+func NewController() Controller {
+	brightness, err := strconv.ParseFloat(os.Getenv("BRIGHTNESS"), 64)
+	if err != nil {
+		log.Panicln(err.Error())
+	}
 	return &ControllerObj{
 		brightness,
 		[]resource{},
 		blinkt.NewBlinkt(blinkt.Blue, brightness),
 	}
+}
+
+func NewClientset() *kubernetes.Clientset {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		log.Panicln(err.Error())
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Panicln(err.Error())
+	}
+	return clientset
+}
+
+func RatioToColor(target, actual int64) string {
+	ratio := math.Min(2, 2*float64(actual)/float64(target))
+	b := int(math.Max(0, 255*(1-ratio)))
+	r := int(math.Max(0, 255*(ratio-1)))
+	g := 255 - b - r
+	return fmt.Sprintf("%02X%02X%02X", r, g, b)
 }
 
 func (o *ControllerObj) Add(name, color string) bool {
@@ -88,7 +123,13 @@ func (o *ControllerObj) Delete(name string) bool {
 	return true
 }
 
-func (o *ControllerObj) Watch(controller cache.Controller) {
+func (o *ControllerObj) Watch(
+	objType runtime.Object,
+	listFunc cache.ListFunc,
+	watchFunc cache.WatchFunc,
+	addFunc func(obj interface{}),
+	updateFunc func(oldObj, newObj interface{}),
+	deleteFunc func(obj interface{})) {
 	log.Println("Starting the Blinkt controller")
 	stopCh := make(chan struct{}, 1)
 	defer close(stopCh)
@@ -98,11 +139,28 @@ func (o *ControllerObj) Watch(controller cache.Controller) {
 		<-sigs
 		stopCh <- struct{}{}
 	}()
+	resyncPeriod, err := time.ParseDuration(os.Getenv("RESYNC_PERIOD"))
+	if err != nil {
+		log.Panicln(err.Error())
+	}
+	_, controller := cache.NewInformer(
+		&cache.ListWatch{
+			ListFunc:  listFunc,
+			WatchFunc: watchFunc,
+		},
+		objType,
+		resyncPeriod,
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    addFunc,
+			UpdateFunc: updateFunc,
+			DeleteFunc: deleteFunc,
+		},
+	)
 	go controller.Run(stopCh)
 	<-stopCh
 }
 
-func (o *ControllerObj) Close() {
+func (o *ControllerObj) Cleanup() {
 	log.Println("Stopping the Blinkt controller")
 	o.blinkt.Close(blinkt.Red, o.brightness)
 }
