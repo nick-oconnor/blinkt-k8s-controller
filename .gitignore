@@ -1,3 +1,2 @@
-vendor/
-pods/pods
-nodes/nodes
+/pods/pods
+/nodes/nodes

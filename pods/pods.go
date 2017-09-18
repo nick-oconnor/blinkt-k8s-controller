@@ -15,59 +15,44 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 
 	"github.com/ngpitt/blinkt"
-	"github.com/ngpitt/blinkt-k8s-controller/lib"
+	"github.com/ngpitt/blinkt-k8s-controller/controller"
+	"github.com/ngpitt/blinkt-k8s-controller/helpers"
 
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/metrics/pkg/apis/metrics/v1alpha1"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/kubectl/metricsutil"
 )
 
-func getPodColor(pod *v1.Pod) string {
+func getPodColor(pod *api.Pod, heapsterClient *metricsutil.HeapsterMetricsClient) string {
 	color := pod.Labels["blinktColor"]
 	switch color {
 	case "":
 		color = blinkt.Blue
 	case "cpu":
-		url := fmt.Sprintf("http://heapster.kube-system/apis/metrics/v1alpha1/namespaces/%s/pods/%s", pod.Namespace, pod.Name)
-		response, err := http.Get(url)
-		if err != nil {
-			log.Panicln(err.Error())
-		}
+		metrics, _ := heapsterClient.GetPodMetrics(pod.Namespace, pod.Name, false, labels.Nothing())
 		cpuUsed := int64(0)
-		if response.StatusCode == http.StatusOK {
-			bytes, err := ioutil.ReadAll(response.Body)
-			if err != nil {
-				log.Panicln(err.Error())
-			}
-			metrics := v1alpha1.PodMetrics{}
-			err = json.Unmarshal(bytes, &metrics)
-			if err != nil {
-				log.Panicln(err.Error())
-			}
-			cpuUsed = metrics.Containers[0].Usage.Cpu().MilliValue()
+		if len(metrics) > 0 {
+			cpuUsed = metrics[0].Containers[0].Usage.Cpu().MilliValue()
 		}
 		cpuRequested := pod.Spec.Containers[0].Resources.Requests.Cpu().MilliValue()
-		color = lib.RatioToColor(cpuRequested, cpuUsed)
+		color = helpers.RatioToColor(cpuRequested, cpuUsed)
 	}
 	return color
 }
 
 func main() {
-	controller := lib.NewController()
+	controller := controller.NewController()
 	defer controller.Cleanup()
-	clientset := lib.NewClientset()
+	coreClient := helpers.NewCoreClient()
+	heapsterClient := metricsutil.DefaultHeapsterMetricsClient(coreClient)
 	nodeName := os.Getenv("NODE_NAME")
 	namespace := os.Getenv("NAMESPACE")
 	listOptions := metav1.ListOptions{
@@ -75,29 +60,29 @@ func main() {
 		FieldSelector: fields.Set{"spec.nodeName": nodeName}.String(),
 	}
 	controller.Watch(
-		&v1.Pod{},
+		&api.Pod{},
 		func(options metav1.ListOptions) (runtime.Object, error) {
-			return clientset.CoreV1().Pods(namespace).List(listOptions)
+			return coreClient.Pods(namespace).List(listOptions)
 		},
 		func(options metav1.ListOptions) (watch.Interface, error) {
-			return clientset.CoreV1().Pods(namespace).Watch(listOptions)
+			return coreClient.Pods(namespace).Watch(listOptions)
 		},
 		func(obj interface{}) {
-			pod := obj.(*v1.Pod)
-			if controller.Add(pod.Name, getPodColor(pod)) {
-				log.Println("Pod ", pod.Name, " added")
+			pod := obj.(*api.Pod)
+			if controller.Add(pod.Name, getPodColor(pod, heapsterClient)) {
+				log.Println("Pod", pod.Name, "added")
 			}
 		},
 		func(oldObj, newObj interface{}) {
-			pod := newObj.(*v1.Pod)
-			if controller.Update(pod.Name, getPodColor(pod)) {
-				log.Println("Pod ", pod.Name, " updated")
+			pod := newObj.(*api.Pod)
+			if controller.Update(pod.Name, getPodColor(pod, heapsterClient)) {
+				log.Println("Pod", pod.Name, "updated")
 			}
 		},
 		func(obj interface{}) {
-			pod := obj.(*v1.Pod)
+			pod := obj.(*api.Pod)
 			if controller.Delete(pod.Name) {
-				log.Println("Pod ", pod.Name, " deleted")
+				log.Println("Pod", pod.Name, "deleted")
 			}
 		})
 }

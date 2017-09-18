@@ -15,56 +15,40 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
 	"log"
-	"net/http"
 
 	"github.com/ngpitt/blinkt"
-	"github.com/ngpitt/blinkt-k8s-controller/lib"
+	"github.com/ngpitt/blinkt-k8s-controller/controller"
+	"github.com/ngpitt/blinkt-k8s-controller/helpers"
 
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/metrics/pkg/apis/metrics/v1alpha1"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/kubectl/metricsutil"
 )
 
-func getNodeColor(node *v1.Node) string {
+func getNodeColor(node *api.Node, heapsterClient *metricsutil.HeapsterMetricsClient) string {
 	for _, c := range node.Status.Conditions {
-		if c.Type == v1.NodeReady {
+		if c.Type == api.NodeReady {
 			switch c.Status {
-			case v1.ConditionTrue:
+			case api.ConditionTrue:
 				color := node.Labels["blinktReadyColor"]
 				switch color {
 				case "":
 					color = blinkt.Blue
 				case "cpu":
-					url := fmt.Sprintf("http://heapster.kube-system/apis/metrics/v1alpha1/nodes/%s", node.Name)
-					response, err := http.Get(url)
-					if err != nil {
-						log.Panicln(err.Error())
-					}
+					nodeMetrics, _ := heapsterClient.GetNodeMetrics(node.Name, labels.Nothing())
 					cpuUsed := int64(0)
-					if response.StatusCode == http.StatusOK {
-						bytes, err := ioutil.ReadAll(response.Body)
-						if err != nil {
-							log.Panicln(err.Error())
-						}
-						metrics := v1alpha1.NodeMetrics{}
-						err = json.Unmarshal(bytes, &metrics)
-						if err != nil {
-							log.Panicln(err.Error())
-						}
-						cpuUsed = metrics.Usage.Cpu().MilliValue()
+					if len(nodeMetrics) > 0 {
+						cpuUsed = nodeMetrics[0].Usage.Cpu().MilliValue()
 					}
 					cpuCapacity := node.Status.Capacity.Cpu().MilliValue()
-					color = lib.RatioToColor(cpuCapacity, cpuUsed)
+					color = helpers.RatioToColor(cpuCapacity, cpuUsed)
 				}
 				return color
-			case v1.ConditionFalse:
+			case api.ConditionFalse:
 				color := node.Labels["blinktNotReadyColor"]
 				if color == "" {
 					color = blinkt.Off
@@ -77,36 +61,37 @@ func getNodeColor(node *v1.Node) string {
 }
 
 func main() {
-	controller := lib.NewController()
+	controller := controller.NewController()
 	defer controller.Cleanup()
-	clientset := lib.NewClientset()
+	coreClient := helpers.NewCoreClient()
+	heapsterClient := metricsutil.DefaultHeapsterMetricsClient(coreClient)
 	listOptions := metav1.ListOptions{
 		LabelSelector: labels.Set{"blinktShow": "true"}.String(),
 	}
 	controller.Watch(
-		&v1.Node{},
+		&api.Node{},
 		func(options metav1.ListOptions) (runtime.Object, error) {
-			return clientset.CoreV1().Nodes().List(listOptions)
+			return coreClient.Nodes().List(listOptions)
 		},
 		func(options metav1.ListOptions) (watch.Interface, error) {
-			return clientset.CoreV1().Nodes().Watch(listOptions)
+			return coreClient.Nodes().Watch(listOptions)
 		},
 		func(obj interface{}) {
-			node := obj.(*v1.Node)
-			if controller.Add(node.Name, getNodeColor(node)) {
-				log.Println("Node ", node.Name, " added")
+			node := obj.(*api.Node)
+			if controller.Add(node.Name, getNodeColor(node, heapsterClient)) {
+				log.Println("Node", node.Name, "added")
 			}
 		},
 		func(oldObj, newObj interface{}) {
-			node := newObj.(*v1.Node)
-			if controller.Update(node.Name, getNodeColor(node)) {
-				log.Println("Node ", node.Name, " updated")
+			node := newObj.(*api.Node)
+			if controller.Update(node.Name, getNodeColor(node, heapsterClient)) {
+				log.Println("Node", node.Name, "updated")
 			}
 		},
 		func(obj interface{}) {
-			node := obj.(*v1.Node)
+			node := obj.(*api.Node)
 			if controller.Delete(node.Name) {
-				log.Println("Node ", node.Name, " deleted")
+				log.Println("Node", node.Name, "deleted")
 			}
 		})
 }
