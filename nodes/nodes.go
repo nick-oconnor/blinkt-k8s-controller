@@ -15,8 +15,6 @@
 package main
 
 import (
-	"log"
-
 	"github.com/ngpitt/blinkt"
 	"github.com/ngpitt/blinkt-k8s-controller/controller"
 	"github.com/ngpitt/blinkt-k8s-controller/helpers"
@@ -78,20 +76,14 @@ func main() {
 		},
 		func(obj interface{}) {
 			node := obj.(*api.Node)
-			if controller.Add(node.Name, getNodeColor(node, heapsterClient)) {
-				log.Println("Node", node.Name, "added")
-			}
+			controller.Add(node.Name, getNodeColor(node, heapsterClient))
 		},
 		func(oldObj, newObj interface{}) {
 			node := newObj.(*api.Node)
-			if controller.Update(node.Name, getNodeColor(node, heapsterClient)) {
-				log.Println("Node", node.Name, "updated")
-			}
+			controller.Update(node.Name, getNodeColor(node, heapsterClient))
 		},
 		func(obj interface{}) {
 			node := obj.(*api.Node)
-			if controller.Delete(node.Name) {
-				log.Println("Node", node.Name, "deleted")
-			}
+			controller.Delete(node.Name)
 		})
 }

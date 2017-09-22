@@ -15,7 +15,6 @@
 package main
 
 import (
-	"log"
 	"os"
 
 	"github.com/ngpitt/blinkt"
@@ -69,20 +68,14 @@ func main() {
 		},
 		func(obj interface{}) {
 			pod := obj.(*api.Pod)
-			if controller.Add(pod.Name, getPodColor(pod, heapsterClient)) {
-				log.Println("Pod", pod.Name, "added")
-			}
+			controller.Add(pod.Name, getPodColor(pod, heapsterClient))
 		},
 		func(oldObj, newObj interface{}) {
 			pod := newObj.(*api.Pod)
-			if controller.Update(pod.Name, getPodColor(pod, heapsterClient)) {
-				log.Println("Pod", pod.Name, "updated")
-			}
+			controller.Update(pod.Name, getPodColor(pod, heapsterClient))
 		},
 		func(obj interface{}) {
 			pod := obj.(*api.Pod)
-			if controller.Delete(pod.Name) {
-				log.Println("Pod", pod.Name, "deleted")
-			}
+			controller.Delete(pod.Name)
 		})
 }

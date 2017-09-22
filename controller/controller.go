@@ -36,9 +36,9 @@ const (
 )
 
 type Controller interface {
-	Add(name, color string) bool
-	Update(name, color string) bool
-	Delete(name string) bool
+	Add(name, color string)
+	Update(name, color string)
+	Delete(name string)
 	Watch(objType runtime.Object,
 		listFunc cache.ListFunc,
 		watchFunc cache.WatchFunc,
@@ -50,14 +50,16 @@ type Controller interface {
 
 type ControllerObj struct {
 	brightness   float64
+	resyncPeriod time.Duration
 	resourceList []resource
 	blinkt       blinkt.Blinkt
 }
 
 type resource struct {
-	name  string
-	color string
-	state int
+	name    string
+	color   string
+	state   int
+	updated time.Time
 }
 
 func NewController() Controller {
@@ -65,38 +67,45 @@ func NewController() Controller {
 	if err != nil {
 		log.Panicln(err.Error())
 	}
+	resyncPeriod, err := time.ParseDuration(os.Getenv("RESYNC_PERIOD"))
+	if err != nil {
+		log.Panicln(err.Error())
+	}
 	return &ControllerObj{
 		brightness,
+		resyncPeriod,
 		[]resource{},
 		blinkt.NewBlinkt(blinkt.Blue, brightness),
 	}
 }
 
-func (o *ControllerObj) Add(name, color string) bool {
-	o.resourceList = append(o.resourceList, resource{name, color, added})
+func (o *ControllerObj) Add(name, color string) {
+	o.resourceList = append(o.resourceList, resource{name, color, added, time.Now()})
 	o.updateBlinkt()
-	return true
 }
 
-func (o *ControllerObj) Update(name, color string) bool {
+func (o *ControllerObj) Update(name, color string) {
 	r := o.getResource(name)
-	if r == nil || color == r.color {
-		return false
+	if r == nil {
+		o.Add(name, color)
+		return
+	}
+	r.updated = time.Now()
+	if color == r.color {
+		return
 	}
 	r.color = color
 	r.state = updated
 	o.updateBlinkt()
-	return true
 }
 
-func (o *ControllerObj) Delete(name string) bool {
+func (o *ControllerObj) Delete(name string) {
 	r := o.getResource(name)
 	if r == nil {
-		return false
+		return
 	}
 	r.state = deleted
 	o.updateBlinkt()
-	return true
 }
 
 func (o *ControllerObj) Watch(
@@ -106,38 +115,32 @@ func (o *ControllerObj) Watch(
 	addFunc func(obj interface{}),
 	updateFunc func(oldObj, newObj interface{}),
 	deleteFunc func(obj interface{})) {
-	log.Println("Starting the Blinkt controller")
-	stopCh := make(chan struct{}, 1)
-	defer close(stopCh)
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigs
-		stopCh <- struct{}{}
-	}()
-	resyncPeriod, err := time.ParseDuration(os.Getenv("RESYNC_PERIOD"))
-	if err != nil {
-		log.Panicln(err.Error())
-	}
 	_, controller := cache.NewInformer(
 		&cache.ListWatch{
 			ListFunc:  listFunc,
 			WatchFunc: watchFunc,
 		},
 		objType,
-		resyncPeriod,
+		o.resyncPeriod,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc:    addFunc,
 			UpdateFunc: updateFunc,
 			DeleteFunc: deleteFunc,
 		},
 	)
-	go controller.Run(stopCh)
-	<-stopCh
+	sigs := make(chan os.Signal)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	stopCh := make(chan struct{})
+	go func() {
+		<-sigs
+		log.Println("Stopping the Blinkt controller...")
+		close(stopCh)
+	}()
+	log.Println("Starting the Blinkt controller...")
+	controller.Run(stopCh)
 }
 
 func (o *ControllerObj) Cleanup() {
-	log.Println("Stopping the Blinkt controller")
 	o.blinkt.Cleanup(blinkt.Red, o.brightness)
 }
 
@@ -154,16 +157,22 @@ func (o *ControllerObj) updateBlinkt() {
 	i := 0
 	for ; i < len(o.resourceList); i++ {
 		r := &o.resourceList[i]
+		if r.updated.Before(time.Now().Add(-3 * o.resyncPeriod)) {
+			r.state = deleted
+		}
 		switch r.state {
 		case added:
+			log.Println("Added", r.name)
 			fallthrough
 		case updated:
+			log.Println("Updated", r.name)
 			if i < 8 {
 				o.blinkt.Flash(i, r.color, o.brightness, 2, 50*time.Millisecond)
 				o.blinkt.Set(i, r.color, o.brightness)
 			}
 			r.state = unchanged
 		case deleted:
+			log.Println("Deleted", r.name)
 			if i < 8 {
 				o.blinkt.Flash(i, r.color, o.brightness, 2, 50*time.Millisecond)
 			}
