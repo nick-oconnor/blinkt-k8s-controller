@@ -30,23 +30,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubectl/metricsutil"
 )
 
-func getPodColor(pod *api.Pod, heapsterClient *metricsutil.HeapsterMetricsClient) string {
-	color := pod.Labels["blinktColor"]
-	switch color {
-	case "":
-		color = blinkt.Blue
-	case "cpu":
-		metrics, _ := heapsterClient.GetPodMetrics(pod.Namespace, pod.Name, false, labels.Nothing())
-		cpuUsed := int64(0)
-		if len(metrics) > 0 {
-			cpuUsed = metrics[0].Containers[0].Usage.Cpu().MilliValue()
-		}
-		cpuRequested := pod.Spec.Containers[0].Resources.Requests.Cpu().MilliValue()
-		color = helpers.RatioToColor(cpuRequested, cpuUsed)
-	}
-	return color
-}
-
 func main() {
 	controller := controller.NewController()
 	defer controller.Cleanup()
@@ -66,16 +49,21 @@ func main() {
 		func(options metav1.ListOptions) (watch.Interface, error) {
 			return coreClient.Pods(namespace).Watch(listOptions)
 		},
-		func(obj interface{}) {
+		func(obj interface{}) string {
 			pod := obj.(*api.Pod)
-			controller.Add(pod.Name, getPodColor(pod, heapsterClient))
-		},
-		func(oldObj, newObj interface{}) {
-			pod := newObj.(*api.Pod)
-			controller.Update(pod.Name, getPodColor(pod, heapsterClient))
-		},
-		func(obj interface{}) {
-			pod := obj.(*api.Pod)
-			controller.Delete(pod.Name)
+			color := pod.Labels["blinktColor"]
+			switch color {
+			case "":
+				color = blinkt.Blue
+			case "cpu":
+				metrics, _ := heapsterClient.GetPodMetrics(pod.Namespace, pod.Name, false, labels.Nothing())
+				cpuUsed := int64(0)
+				if len(metrics) > 0 {
+					cpuUsed = metrics[0].Containers[0].Usage.Cpu().MilliValue()
+				}
+				cpuRequested := pod.Spec.Containers[0].Resources.Requests.Cpu().MilliValue()
+				color = helpers.RatioToColor(cpuRequested, cpuUsed)
+			}
+			return color
 		})
 }

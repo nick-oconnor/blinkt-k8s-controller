@@ -27,37 +27,6 @@ import (
 	"k8s.io/kubernetes/pkg/kubectl/metricsutil"
 )
 
-func getNodeColor(node *api.Node, heapsterClient *metricsutil.HeapsterMetricsClient) string {
-	for _, c := range node.Status.Conditions {
-		if c.Type == api.NodeReady {
-			switch c.Status {
-			case api.ConditionTrue:
-				color := node.Labels["blinktReadyColor"]
-				switch color {
-				case "":
-					color = blinkt.Blue
-				case "cpu":
-					nodeMetrics, _ := heapsterClient.GetNodeMetrics(node.Name, labels.Nothing())
-					cpuUsed := int64(0)
-					if len(nodeMetrics) > 0 {
-						cpuUsed = nodeMetrics[0].Usage.Cpu().MilliValue()
-					}
-					cpuCapacity := node.Status.Capacity.Cpu().MilliValue()
-					color = helpers.RatioToColor(cpuCapacity, cpuUsed)
-				}
-				return color
-			case api.ConditionFalse:
-				color := node.Labels["blinktNotReadyColor"]
-				if color == "" {
-					color = blinkt.Off
-				}
-				return color
-			}
-		}
-	}
-	return blinkt.Red
-}
-
 func main() {
 	controller := controller.NewController()
 	defer controller.Cleanup()
@@ -74,16 +43,35 @@ func main() {
 		func(options metav1.ListOptions) (watch.Interface, error) {
 			return coreClient.Nodes().Watch(listOptions)
 		},
-		func(obj interface{}) {
+		func(obj interface{}) string {
 			node := obj.(*api.Node)
-			controller.Add(node.Name, getNodeColor(node, heapsterClient))
-		},
-		func(oldObj, newObj interface{}) {
-			node := newObj.(*api.Node)
-			controller.Update(node.Name, getNodeColor(node, heapsterClient))
-		},
-		func(obj interface{}) {
-			node := obj.(*api.Node)
-			controller.Delete(node.Name)
+			for _, c := range node.Status.Conditions {
+				if c.Type == api.NodeReady {
+					switch c.Status {
+					case api.ConditionTrue:
+						color := node.Labels["blinktReadyColor"]
+						switch color {
+						case "":
+							color = blinkt.Blue
+						case "cpu":
+							nodeMetrics, _ := heapsterClient.GetNodeMetrics(node.Name, labels.Nothing())
+							cpuUsed := int64(0)
+							if len(nodeMetrics) > 0 {
+								cpuUsed = nodeMetrics[0].Usage.Cpu().MilliValue()
+							}
+							cpuCapacity := node.Status.Capacity.Cpu().MilliValue()
+							color = helpers.RatioToColor(cpuCapacity, cpuUsed)
+						}
+						return color
+					case api.ConditionFalse:
+						color := node.Labels["blinktNotReadyColor"]
+						if color == "" {
+							color = blinkt.Off
+						}
+						return color
+					}
+				}
+			}
+			return blinkt.Red
 		})
 }
