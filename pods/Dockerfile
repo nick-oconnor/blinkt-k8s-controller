@@ -1,4 +1,3 @@
 FROM scratch
 COPY pods /
-
-CMD ["/pods"]
+ENTRYPOINT ["/pods"]

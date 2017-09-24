@@ -15,40 +15,49 @@
 package main
 
 import (
+	"flag"
 	"os"
+	"time"
 
 	"github.com/ngpitt/blinkt"
 	"github.com/ngpitt/blinkt-k8s-controller/controller"
 	"github.com/ngpitt/blinkt-k8s-controller/helpers"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/kubectl/metricsutil"
 )
 
 func main() {
-	controller := controller.NewController()
-	defer controller.Cleanup()
-	coreClient := helpers.NewCoreClient()
-	heapsterClient := metricsutil.DefaultHeapsterMetricsClient(coreClient)
+	brightness := flag.Float64("brightness", 0.25, "strip brightness")
+	resyncPeriod := flag.Duration("resync_period", 5*time.Second, "resync period")
+	namespace := flag.String("namespace", api.NamespaceDefault, "namespace to monitor")
+	flag.Parse()
 	nodeName := os.Getenv("NODE_NAME")
-	namespace := os.Getenv("NAMESPACE")
-	listOptions := metav1.ListOptions{
-		LabelSelector: labels.Set{"blinktShow": "true"}.String(),
-		FieldSelector: fields.Set{"spec.nodeName": nodeName}.String(),
-	}
-	controller.Watch(
+	c := controller.NewController(*brightness)
+	defer c.Cleanup()
+	client := helpers.NewCoreClient()
+	heapsterClient := metricsutil.DefaultHeapsterMetricsClient(client)
+	c.Watch(
+		&cache.ListWatch{
+			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
+				options.LabelSelector = labels.Set{"blinktShow": "true"}.String()
+				options.FieldSelector = fields.Set{"spec.nodeName": nodeName}.String()
+				return client.Pods(*namespace).List(options)
+			},
+			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
+				options.LabelSelector = labels.Set{"blinktShow": "true"}.String()
+				options.FieldSelector = fields.Set{"spec.nodeName": nodeName}.String()
+				return client.Pods(*namespace).Watch(options)
+			},
+		},
 		&api.Pod{},
-		func(options metav1.ListOptions) (runtime.Object, error) {
-			return coreClient.Pods(namespace).List(listOptions)
-		},
-		func(options metav1.ListOptions) (watch.Interface, error) {
-			return coreClient.Pods(namespace).Watch(listOptions)
-		},
+		*resyncPeriod,
 		func(obj interface{}) string {
 			pod := obj.(*api.Pod)
 			color := pod.Labels["blinktColor"]

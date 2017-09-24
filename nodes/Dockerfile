@@ -1,4 +1,3 @@
 FROM scratch
 COPY nodes /
-
-CMD ["/nodes"]
+ENTRYPOINT ["/nodes"]

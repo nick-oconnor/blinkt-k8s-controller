@@ -18,7 +18,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -35,18 +35,17 @@ const (
 	unchanged = iota
 )
 
+type ColorFunc func(obj interface{}) string
+
 type Controller interface {
-	Watch(objType runtime.Object,
-		listFunc cache.ListFunc,
-		watchFunc cache.WatchFunc,
-		colorFunc func(obj interface{}) string)
+	Watch(listWatch *cache.ListWatch, objType runtime.Object, resyncPeriod time.Duration, colorFunc ColorFunc)
 	Cleanup()
 }
 
 type ControllerObj struct {
 	brightness   float64
-	resyncPeriod time.Duration
 	resourceList []resource
+	resourceLock *sync.Mutex
 	blinkt       blinkt.Blinkt
 }
 
@@ -56,37 +55,24 @@ type resource struct {
 	state int
 }
 
-func NewController() Controller {
-	brightness, err := strconv.ParseFloat(os.Getenv("BRIGHTNESS"), 64)
-	if err != nil {
-		log.Panicln(err.Error())
-	}
-	resyncPeriod, err := time.ParseDuration(os.Getenv("RESYNC_PERIOD"))
-	if err != nil {
-		log.Panicln(err.Error())
-	}
+func NewController(brightness float64) Controller {
 	return &ControllerObj{
 		brightness,
-		resyncPeriod,
 		[]resource{},
+		&sync.Mutex{},
 		blinkt.NewBlinkt(blinkt.Blue, brightness),
 	}
 }
 
-func (o *ControllerObj) Watch(
-	objType runtime.Object,
-	listFunc cache.ListFunc,
-	watchFunc cache.WatchFunc,
-	colorFunc func(obj interface{}) string) {
+func (o *ControllerObj) Watch(listWatch *cache.ListWatch, objType runtime.Object, resyncPeriod time.Duration, colorFunc ColorFunc) {
 	_, controller := cache.NewInformer(
-		&cache.ListWatch{
-			ListFunc:  listFunc,
-			WatchFunc: watchFunc,
-		},
+		listWatch,
 		objType,
-		o.resyncPeriod,
+		resyncPeriod,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
+				o.resourceLock.Lock()
+				defer o.resourceLock.Unlock()
 				key := keyFunc(obj)
 				color := colorFunc(obj)
 				r := resource{key, color, added}
@@ -95,6 +81,8 @@ func (o *ControllerObj) Watch(
 				o.updateBlinkt()
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
+				o.resourceLock.Lock()
+				defer o.resourceLock.Unlock()
 				key := keyFunc(newObj)
 				color := colorFunc(newObj)
 				r := o.getResource(key)
@@ -107,6 +95,8 @@ func (o *ControllerObj) Watch(
 				o.updateBlinkt()
 			},
 			DeleteFunc: func(obj interface{}) {
+				o.resourceLock.Lock()
+				defer o.resourceLock.Unlock()
 				key := keyFunc(obj)
 				r := o.getResource(key)
 				log.Println("Deleting ", r.key, "...\n")

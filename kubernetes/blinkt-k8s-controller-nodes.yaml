@@ -19,11 +19,9 @@ spec:
       containers:
       - name: blinkt-k8s-controller-nodes
         image: ngpitt/blinkt-k8s-controller-nodes:v1
-        env:
-        - name: BRIGHTNESS
-          value: "0.1"
-        - name: RESYNC_PERIOD
-          value: "4s"
+        args:
+        - -brightness=0.25
+        - -resync_period=5s
         volumeMounts:
         - mountPath: /sys
           name: sys-tree

@@ -19,13 +19,11 @@ spec:
       containers:
       - name: blinkt-k8s-controller-pods
         image: ngpitt/blinkt-k8s-controller-pods:v1
+        args:
+        - -brightness=0.25
+        - -resync_period=5s
+        - -namespace=default
         env:
-        - name: BRIGHTNESS
-          value: "0.1"
-        - name: RESYNC_PERIOD
-          value: "4s"
-        - name: NAMESPACE
-          value: default
         - name: NODE_NAME
           valueFrom:
             fieldRef:
