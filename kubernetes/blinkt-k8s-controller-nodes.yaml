@@ -9,10 +9,10 @@ spec:
       labels:
         name: blinkt-k8s-controller-nodes
     spec:
-#     tolerations:
-#     - key: "node-role.kubernetes.io/master"
-#       operator: "Exists"
-#       effect: "NoSchedule"
+      tolerations:
+      - key: "node-role.kubernetes.io/master"
+        operator: "Exists"
+        effect: "NoSchedule"
       serviceAccountName: blinkt-k8s-controller-sa
       nodeSelector:
         blinktImage: nodes
