@@ -22,13 +22,12 @@ import (
 	"github.com/ngpitt/blinkt-k8s-controller/controller"
 	"github.com/ngpitt/blinkt-k8s-controller/helpers"
 
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/kubectl/metricsutil"
 )
 
 func main() {
@@ -37,42 +36,41 @@ func main() {
 	flag.Parse()
 	c := controller.NewController(*brightness)
 	defer c.Cleanup()
-	client := helpers.NewCoreClient()
-	heapsterClient := metricsutil.DefaultHeapsterMetricsClient(client)
+	kubernetesClientset, heapsterClientset := helpers.NewClientsets()
 	c.Watch(
 		&cache.ListWatch{
-			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				options.LabelSelector = labels.Set{"blinktShow": "true"}.String()
-				return client.Nodes().List(options)
+				return kubernetesClientset.CoreV1().Nodes().List(options)
 			},
-			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				options.LabelSelector = labels.Set{"blinktShow": "true"}.String()
-				return client.Nodes().Watch(options)
+				return kubernetesClientset.CoreV1().Nodes().Watch(options)
 			},
 		},
-		&api.Node{},
+		&v1.Node{},
 		*resyncPeriod,
 		func(obj interface{}) string {
-			node := obj.(*api.Node)
+			node := obj.(*v1.Node)
 			for _, c := range node.Status.Conditions {
-				if c.Type == api.NodeReady {
+				if c.Type == v1.NodeReady {
 					switch c.Status {
-					case api.ConditionTrue:
+					case v1.ConditionTrue:
 						color := node.Labels["blinktReadyColor"]
 						switch color {
 						case "":
 							color = blinkt.Blue
 						case "cpu":
-							nodeMetrics, _ := heapsterClient.GetNodeMetrics(node.Name, labels.Nothing())
+							metrics, err := heapsterClientset.MetricsV1alpha1().NodeMetricses().Get(node.Name, metav1.GetOptions{})
 							cpuUsed := int64(0)
-							if len(nodeMetrics) > 0 {
-								cpuUsed = nodeMetrics[0].Usage.Cpu().MilliValue()
+							if err == nil {
+								cpuUsed = metrics.Usage.Cpu().MilliValue()
 							}
 							cpuCapacity := node.Status.Capacity.Cpu().MilliValue()
 							color = helpers.RatioToColor(cpuCapacity, cpuUsed)
 						}
 						return color
-					case api.ConditionFalse:
+					case v1.ConditionFalse:
 						color := node.Labels["blinktNotReadyColor"]
 						if color == "" {
 							color = blinkt.Off

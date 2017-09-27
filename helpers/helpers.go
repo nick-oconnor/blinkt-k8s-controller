@@ -19,20 +19,27 @@ import (
 	"log"
 	"math"
 
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	heapster "k8s.io/metrics/pkg/client/clientset_generated/clientset"
 )
 
-func NewCoreClient() *internalclientset.Clientset {
+func NewClientsets() (*kubernetes.Clientset, *heapster.Clientset) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		log.Panicln(err.Error())
 	}
-	clientset, err := internalclientset.NewForConfig(config)
+	kubernetesClientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		log.Panicln(err.Error())
 	}
-	return clientset
+	heapsterClientset, err := heapster.NewForConfig(&rest.Config{
+		Host: "http://heapster",
+	})
+	if err != nil {
+		log.Panicln(err.Error())
+	}
+	return kubernetesClientset, heapsterClientset
 }
 
 func RatioToColor(target, actual int64) string {
