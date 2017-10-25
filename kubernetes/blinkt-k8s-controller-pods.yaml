@@ -21,7 +21,7 @@ spec:
         image: ngpitt/blinkt-k8s-controller-pods:v1
         args:
         - -brightness=0.25
-        - -resync_period=5s
+        - -resync_period=10s
         - -namespace=default
         env:
         - name: NODE_NAME
