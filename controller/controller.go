@@ -99,7 +99,7 @@ func (o *ControllerObj) Watch(listWatch *cache.ListWatch, objType runtime.Object
 				defer o.resourceLock.Unlock()
 				key := keyFunc(obj)
 				r := o.getResource(key)
-				log.Println("Deleting ", r.key, "...\n")
+				log.Print("Deleting ", r.key, "...\n")
 				r.state = deleted
 				o.updateBlinkt()
 			},
