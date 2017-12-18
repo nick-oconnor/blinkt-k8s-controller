@@ -1,8 +1,6 @@
 package: github.com/ngpitt/blinkt-k8s-controller
 import:
 - package: github.com/ngpitt/blinkt
-  version: HEAD
-- package: k8s.io/client-go
-  version: release-4.0
+  version: master
 - package: k8s.io/metrics
-  version: release-1.7
+  version: kubernetes-1.9.0
