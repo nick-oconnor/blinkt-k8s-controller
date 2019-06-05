@@ -3,4 +3,4 @@ import:
 - package: github.com/ngpitt/blinkt
   version: master
 - package: k8s.io/metrics
-  version: kubernetes-1.9.0
+  version: kubernetes-1.13.0

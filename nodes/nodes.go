@@ -36,16 +36,16 @@ func main() {
 	flag.Parse()
 	c := controller.NewController(*brightness)
 	defer c.Cleanup()
-	kubernetesClientset, heapsterClientset := helpers.NewClientsets()
+	kubernetesClient, metricsClient := helpers.NewClients()
 	c.Watch(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				options.LabelSelector = labels.Set{"blinktShow": "true"}.String()
-				return kubernetesClientset.CoreV1().Nodes().List(options)
+				return kubernetesClient.Core().Nodes().List(options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				options.LabelSelector = labels.Set{"blinktShow": "true"}.String()
-				return kubernetesClientset.CoreV1().Nodes().Watch(options)
+				return kubernetesClient.Core().Nodes().Watch(options)
 			},
 		},
 		&v1.Node{},
@@ -61,7 +61,7 @@ func main() {
 						case "":
 							color = blinkt.Blue
 						case "cpu":
-							metrics, err := heapsterClientset.MetricsV1alpha1().NodeMetricses().Get(node.Name, metav1.GetOptions{})
+							metrics, err := metricsClient.Metrics().NodeMetricses().Get(node.Name, metav1.GetOptions{})
 							cpuUsed := int64(0)
 							if err == nil {
 								cpuUsed = metrics.Usage.Cpu().MilliValue()

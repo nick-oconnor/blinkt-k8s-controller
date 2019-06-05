@@ -40,18 +40,18 @@ func main() {
 	nodeName := os.Getenv("NODE_NAME")
 	c := controller.NewController(*brightness)
 	defer c.Cleanup()
-	kubernetesClientset, heapsterClientset := helpers.NewClientsets()
+	kubernetesClient, metricsClient := helpers.NewClients()
 	c.Watch(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				options.LabelSelector = labels.Set{"blinktShow": "true"}.String()
 				options.FieldSelector = fields.Set{"spec.nodeName": nodeName}.String()
-				return kubernetesClientset.CoreV1().Pods(*namespace).List(options)
+				return kubernetesClient.Core().Pods(*namespace).List(options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				options.LabelSelector = labels.Set{"blinktShow": "true"}.String()
 				options.FieldSelector = fields.Set{"spec.nodeName": nodeName}.String()
-				return kubernetesClientset.CoreV1().Pods(*namespace).Watch(options)
+				return kubernetesClient.Core().Pods(*namespace).Watch(options)
 			},
 		},
 		&v1.Pod{},
@@ -63,7 +63,7 @@ func main() {
 			case "":
 				color = blinkt.Blue
 			case "cpu":
-				metrics, err := heapsterClientset.MetricsV1alpha1().PodMetricses(pod.Namespace).Get(pod.Name, metav1.GetOptions{})
+				metrics, err := metricsClient.Metrics().PodMetricses(pod.Namespace).Get(pod.Name, metav1.GetOptions{})
 				cpuUsed := int64(0)
 				if err == nil {
 					cpuUsed = metrics.Containers[0].Usage.Cpu().MilliValue()
