@@ -65,7 +65,7 @@ func main() {
 			case "cpu":
 				metrics, err := metricsClient.Metrics().PodMetricses(pod.Namespace).Get(pod.Name, metav1.GetOptions{})
 				cpuUsed := int64(0)
-				if err == nil {
+				if err == nil && len(metrics.Containers) == 1 {
 					cpuUsed = metrics.Containers[0].Usage.Cpu().MilliValue()
 				}
 				cpuRequested := pod.Spec.Containers[0].Resources.Requests.Cpu().MilliValue()
